@@ -43,6 +43,15 @@ def random_agent(view: np.ndarray, n_mines: int):
 AGENTS = {"solver": solver_agent, "random": random_agent}
 
 
+def get_agent(name: str, model_path: str | None = None, mode: str = "hybrid"):
+    """Достать агента по имени. 'net' подгружается лениво, чтобы torch не
+    требовался для работы с решателем."""
+    if name != "net":
+        return AGENTS[name]
+    from nn_agent import make_single_agent
+    return make_single_agent(model_path or "minenet.pt", mode=mode)
+
+
 def play_game(agent, game: Minesweeper, record: bool = False,
               max_moves: int = 5000):
     """Одна партия. Если record=True, сохраняем ходы и карты вероятностей.
@@ -59,17 +68,21 @@ def play_game(agent, game: Minesweeper, record: bool = False,
         r, c, prob = agent(view, game.n_mines)
         if record:
             moves.append([int(r), int(c)])
+            # 6 знаков, а не 4: у нейросети бывают вероятности вида 1e-5, и при
+            # округлении до 4 знаков они превращаются в ровный ноль. А ровный
+            # ноль в визуализаторе значит «доказано безопасно» — то, чего сеть
+            # не умеет в принципе. Лишняя точность здесь защищает от вранья.
             probs.append(None if prob is None else
-                         [[None if np.isnan(x) else round(float(x), 4) for x in row]
+                         [[None if np.isnan(x) else round(float(x), 6) for x in row]
                           for row in prob])
         game.reveal(r, c)
     return game, {"moves": moves, "probs": probs}
 
 
 def benchmark(agent_name: str, difficulty: str, n_games: int, seed: int = 0,
-              verbose: bool = True):
+              verbose: bool = True, model: str | None = None):
     h, w, m = DIFFICULTIES[difficulty]
-    agent = AGENTS[agent_name]
+    agent = get_agent(agent_name, model)
     rng = np.random.default_rng(seed)
     wins = 0
     cleared = []
@@ -108,7 +121,8 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     b = sub.add_parser("bench")
-    b.add_argument("--agent", default="solver", choices=list(AGENTS))
+    b.add_argument("--agent", default="solver", choices=list(AGENTS) + ["net"])
+    b.add_argument("--model", default="minenet.pt", help="для --agent net")
     b.add_argument("--difficulty", default="beginner", choices=list(DIFFICULTIES))
     b.add_argument("--games", type=int, default=200)
     b.add_argument("--seed", type=int, default=0)
@@ -116,7 +130,8 @@ def main() -> None:
     b.add_argument("--json", help="куда сохранить результаты")
 
     rec = sub.add_parser("record")
-    rec.add_argument("--agent", default="solver", choices=list(AGENTS))
+    rec.add_argument("--agent", default="solver", choices=list(AGENTS) + ["net"])
+    rec.add_argument("--model", default="minenet.pt", help="для --agent net")
     rec.add_argument("--difficulty", default="expert", choices=list(DIFFICULTIES))
     rec.add_argument("--seed", type=int, default=0)
     rec.add_argument("--out", default="replay.json")
@@ -133,7 +148,7 @@ def main() -> None:
         results = []
         for lvl in levels:
             print(f"\n{lvl}:")
-            r = benchmark(args.agent, lvl, args.games, args.seed)
+            r = benchmark(args.agent, lvl, args.games, args.seed, model=args.model)
             results.append(r)
         print()
         for r in results:
@@ -153,9 +168,10 @@ def main() -> None:
                     n += 1
             return n
 
+        agent = get_agent(args.agent, args.model)   # модель грузим один раз
         for attempt in range(300):
             game = Minesweeper(h, w, m, rng=rng)
-            game, rec = play_game(AGENTS[args.agent], game, record=True)
+            game, rec = play_game(agent, game, record=True)
             ok = (not args.want_win or game.won) and count_guesses(rec) >= args.min_guesses
             if ok:
                 break
