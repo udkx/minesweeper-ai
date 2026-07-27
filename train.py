@@ -112,6 +112,8 @@ def main() -> None:
     p.add_argument("--out", default="minenet.pt")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--limit", type=int, default=0, help="взять только N примеров")
+    p.add_argument("--log-every", type=int, default=40,
+                   help="печатать прогресс раз в N батчей")
     args = p.parse_args()
 
     device = pick_device(args.device)
@@ -171,9 +173,16 @@ def main() -> None:
             run_loss += loss.item() * int(mask.sum())
             run_cells += int(mask.sum())
             seen += len(idx)
-            if bi % 200 == 0:
+            if bi % args.log_every == 0:
+                el = time.perf_counter() - t0
+                # Оценка остатка по уже пройденной части эпохи. На первых
+                # батчах она врёт (MPS греется и компилирует ядра), после
+                # первой сотни становится честной.
+                eta = el * (len(views_tr) - seen) / max(seen, 1)
                 print(f"  эпоха {epoch}  {seen}/{len(views_tr)}  "
-                      f"loss {run_loss / max(run_cells,1):.4f}", flush=True)
+                      f"loss {run_loss / max(run_cells,1):.4f}  "
+                      f"{seen / el:6.0f} поз/с  прошло {el / 60:.1f} мин  "
+                      f"осталось ~{eta / 60:.1f} мин", flush=True)
         train_loss = run_loss / max(run_cells, 1)
         ev = evaluate(net, views_va, mines_va, n_mines, device)
         dt = time.perf_counter() - t0
