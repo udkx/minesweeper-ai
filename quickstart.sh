@@ -44,7 +44,7 @@ python dataset.py make --difficulty intermediate --positions 40000  --seed 999 -
 
 echo
 echo "== 5/6 обучение =="
-echo "Сначала две эпохи, чтобы понять скорость на твоём железе."
+echo "Сначала две эпохи, чтобы понять скорость на этом железе."
 python train.py --epochs 2 --channels 64 --blocks 6 --out minenet.pt
 echo
 echo "Посмотри время эпохи выше и умножь на 12 — столько займёт полный прогон:"
