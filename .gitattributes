@@ -1,0 +1,3 @@
+# minesweeper.html собирается build_html.py (в него вшиты записи партий), в статистику языков не идёт
+minesweeper.html linguist-generated
+replay*.json linguist-generated
